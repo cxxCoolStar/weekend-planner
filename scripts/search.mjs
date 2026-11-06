@@ -1,17 +1,21 @@
-// Round 1: 搜索"广州周末去哪玩"，提取笔记列表
-const task = await takeOverTaskSpace(2);
+// Round 1: 搜索广州周末内容，提取笔记列表
+// 用法: ego-browser nodejs < scripts/search.mjs
+// 每次只改一个关键词，低频拟人化（见 README 已知坑）。
+
+const SPACE = "weekend-planner";
+const KEYWORD = "广州周末 室内 展览 市集";
+
+const task = await taskSpace(SPACE);
 const page = task.page("p1");
 
 await page.goto(
-  "https://www.xiaohongshu.com/search_result?keyword=" +
-  encodeURIComponent("广州周末去哪玩"),
+  "https://www.xiaohongshu.com/search_result?keyword=" + encodeURIComponent(KEYWORD),
   { timeout: 30000 },
 ).catch(() => {});
 await page.waitForLoadState("load", { timeout: 20000 }).catch(() => {});
 await page.waitForTimeout(2500);
 
-const data = await page.evaluate(() => {
-  const unwrap = (v) => (v && typeof v === "object" && "_value" in v) ? v._value : v;
+const data = await page.evaluate((kw) => {
   const is404 = location.pathname.includes("404");
   const sections = [...document.querySelectorAll("section")];
   const items = [];
@@ -35,16 +39,9 @@ const data = await page.evaluate(() => {
       sec.querySelector(".count")?.textContent?.trim() ||
       "";
     const cover = sec.querySelector("img")?.src || "";
-    items.push({
-      id: idm[1],
-      href,
-      title,
-      author,
-      liked,
-      cover,
-    });
+    items.push({ id: idm[1], href, title, author, liked, cover });
   }
-  return { is404, url: location.href.slice(0, 90), count: items.length, items };
-});
+  return { is404, keyword: kw, url: location.href.slice(0, 120), count: items.length, items };
+}, KEYWORD);
 
-console.log(JSON.stringify(data, null, 1));
+console.log(JSON.stringify({ spaceId: task.spaceId, ...data }, null, 1));

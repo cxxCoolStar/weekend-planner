@@ -13,9 +13,10 @@
 
 ```
 weekend-planner/
-├── scripts/          # ego-browser nodejs 脚本（搜索 / 详情 / 图片下载）
+├── scripts/          # ego-browser nodejs 脚本（搜索 / 详情 / token 提取 / 图片下载）
 ├── data/
-│   ├── history/      # 旅游历史记录（JSONL，每次推荐一行）
+│   ├── history/      # 推荐历史（JSONL，每次推荐一行，记录"推过什么"）
+│   ├── visited.jsonl # 实际去过的地方（JSONL，一行一个地点，记录"真去过什么"）
 │   └── images/       # 下载的笔记图片（按 日期-城市 分目录）
 └── docs/             # 使用说明与运行手册
 ```
@@ -52,7 +53,7 @@ ego-browser nodejs < scripts/search.mjs
 # 3. 进详情 + 下载图片（改脚本里的 targets：id/tag/token）
 ego-browser nodejs < scripts/detail.mjs
 
-# 4. 筛选 + 汇总推荐：结合天气等级、preferences.json 的 likes/dislikes、history 已去记录
+# 4. 筛选 + 汇总推荐：结合天气等级、preferences.json 的 likes/dislikes、visited.jsonl（去过）、history（推过）
 #    推荐开头必须给出天气结论与筛选理由
 
 # 5. 记录历史：把入选笔记写入 data/history/YYYY-MM-DD.jsonl（含 weather 字段快照）
@@ -72,6 +73,49 @@ ego-browser nodejs < scripts/detail.mjs
 | 降水 30%~60% | `caution`：户外降权并附注"可能阵雨带伞" |
 | 最高温 ≥35℃ | `caution`：避免正午长时间户外，保留树荫/水边路线 |
 | 天气获取失败 | 降级：不筛选，推荐注明"天气获取失败，未做筛选" |
+
+## 已去记录（data/visited.jsonl）
+
+用户说"这个地方去过了"时写这里，一行一个地点，只记事实不记评价：
+
+| 字段 | 说明 |
+|---|---|
+| `place` / `area` | 地点名 / 所在区域 |
+| `scope` | 精确到去过哪部分（如 `5F 展厅`）；没到过的楼层不算 |
+| `visited_at` / `precision` | 去的月份（`precision:"month"` 表示只精确到月） |
+| `source` / `reported_at` | 来源（`user_feedback`）/ 用户哪天说的 |
+| `note` | 去重时的口径（如"5F 避开，其他楼层新展仍可考虑"） |
+
+推荐时先过一遍：命中 `place` 且 `scope` 覆盖本次主题的直接排除，只命中楼层的只排除对应楼层。
+`related_note_id` 指回出处笔记；history 里被这条记录否掉的推荐会标 `visited_hit`。
+
+## 位置与距离（data/profile.json + scripts/distance.mjs）
+
+`data/profile.json` 的 `home` 存当前出发点（默认白云区，坐标=白云区中心三元里一带）。用户说"我在 X 区/X 街道"时改这里。
+
+```bash
+# 算一批候选地点的距离
+node scripts/distance.mjs "时尚天河" "云幕剧场" "悦方城"
+
+# 或从 JSON 文件读
+node scripts/distance.mjs --places-file data/candidates.json
+
+# 结构化输出（供推荐流程消费）
+node scripts/distance.mjs --json
+```
+
+数据源优先级：本地锚点表（校准过的场馆坐标）→ Photon (OSM) 在线 geocoding（带磁盘缓存 `data/geocache.json`）→ 按区域粗距离（`DISTRICT_KM`）。距离是直线距离（Haversine），只用于粗排序，不等于通勤时间。
+
+距离档位（profile.json `distance.bands` 可调）：
+
+| 档位 | 范围 | 动作 |
+|---|---|---|
+| `near` | ≤8km | 加权重 |
+| `mid` | 8~18km | 正常 |
+| `far` | 18~30km | 降权 |
+| `very_far` | >30km | 附注"很远"（如南沙 45km+） |
+
+推荐汇总时把 `--json` 输出和天气、visited、history 一起喂给排序逻辑：天气 level=block 的户外主题先排除，再按距离 band 调整排序。
 
 ## 偏好记录（data/preferences.json）
 
