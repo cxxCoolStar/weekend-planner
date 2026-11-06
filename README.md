@@ -43,16 +43,49 @@ page.fetch(url, { saveAs })  走浏览器网络栈下载图片
 ## 使用方式（当前版本）
 
 ```bash
-# 1. 搜索（改脚本里的关键词后运行）
+# 1. 查周末天气（自动判断筛选等级；失败降级为不筛选）
+node scripts/weather.mjs
+
+# 2. 搜索（改脚本里的关键词后运行）
 ego-browser nodejs < scripts/search.mjs
 
-# 2. 进详情 + 下载图片（改脚本里的 targets：id/tag/token）
+# 3. 进详情 + 下载图片（改脚本里的 targets：id/tag/token）
 ego-browser nodejs < scripts/detail.mjs
 
-# 3. 记录历史：把入选笔记写入 data/history/YYYY-MM-DD.jsonl
+# 4. 筛选 + 汇总推荐：结合天气等级、preferences.json 的 likes/dislikes、history 已去记录
+#    推荐开头必须给出天气结论与筛选理由
+
+# 5. 记录历史：把入选笔记写入 data/history/YYYY-MM-DD.jsonl（含 weather 字段快照）
+
+# 6. 推荐后向用户要一句反馈，提炼进 data/preferences.json（回显确认后写入）
 ```
 
 脚本里任务空间 id（当前是 `takeOverTaskSpace(2)`）依赖 ego lite 当前会话，运行前按需调整。
+
+## 天气筛选规则
+
+数据源 [wttr.in](https://wttr.in/)（免费、无注册），取广州本周六/日午后时段：
+
+| 条件 | 动作 |
+|---|---|
+| 降水 ≥60% 或雷雨 | `block`：排除户外主题（徒步/爬山/露营/赏花/公园） |
+| 降水 30%~60% | `caution`：户外降权并附注"可能阵雨带伞" |
+| 最高温 ≥35℃ | `caution`：避免正午长时间户外，保留树荫/水边路线 |
+| 天气获取失败 | 降级：不筛选，推荐注明"天气获取失败，未做筛选" |
+
+## 偏好记录（data/preferences.json）
+
+```json
+{
+  "likes": ["命中的主题会在推荐中排前"],
+  "dislikes": ["命中的主题降权或附注提醒"],
+  "notes": "自由文本约束（如：对象怕晒、喜欢有咖啡歇脚的路线）",
+  "updated_at": "最后更新时间"
+}
+```
+
+- 冷启动为空，靠热度+主题互补兜底；每次推荐后收集一句反馈提炼写入。
+- 逐地点的主观评价不写这里——直接从 history + 反馈推导，避免两处维护同一份事实。
 
 ## 已知坑（重要）
 
@@ -68,6 +101,6 @@ ego-browser nodejs < scripts/detail.mjs
 ## 数据规范
 
 - 历史记录一行一条 JSON，字段见 `data/history/history-2026-11-06.jsonl` 样例：
-  `date / city / keyword / source / notes[]（note_id, title, author, liked, collected, url, places[], theme, images[]）/ picked_reason`
+  `date / city / keyword / source / notes[]（note_id, title, author, liked, collected, url, places[], theme, images[]）/ weather{sat, sun, filter_applied} / picked_reason`
 - 图片命名：`{主题tag}-{序号}.webp`，目录 `data/images/{城市}-{YYYYMMDD}/`
 - 推荐时先读历史，避免推荐去过/推过的地方。
